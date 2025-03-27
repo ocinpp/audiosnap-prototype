@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AudioSnap Prototype</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+    <div class="bg-white shadow-lg rounded-lg p-6 max-w-lg w-full">
+      <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">
+        AudioSnap
+      </h1>
+
+      <!-- Audio Recording Section -->
+      <div class="mb-8">
+        <h2 class="text-xl font-semibold text-gray-700 mb-4">
+          Step 1: Record Audio (20s)
+        </h2>
+        <div class="flex justify-center space-x-4">
+          <button
+            id="recordBtn"
+            class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition disabled:bg-gray-400"
+          >
+            Record
+          </button>
+          <button
+            id="stopBtn"
+            class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition disabled:bg-gray-400"
+            disabled
+          >
+            Stop
+          </button>
+        </div>
+        <div id="timer" class="text-lg text-gray-600 mt-4">00:00 / 00:20</div>
+        <audio id="audioPreview" controls class="mt-4 w-full hidden"></audio>
+        <button id="downloadAudioBtn" style="display: none">
+          Download Audio
+        </button>
+      </div>
+
+      <!-- Photo Section -->
+      <div class="mb-8">
+        <h2 class="text-xl font-semibold text-gray-700 mb-4">
+          Step 2: Add Photo
+        </h2>
+        <div class="flex justify-center space-x-4">
+          <button
+            id="webcamBtn"
+            class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition disabled:bg-gray-400"
+          >
+            Take Photo
+          </button>
+          <input
+            type="file"
+            id="photoUpload"
+            accept="image/*"
+            class="text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-blue-500 file:text-white file:hover:bg-blue-600"
+          />
+        </div>
+        <video
+          id="webcamPreview"
+          width="300"
+          height="225"
+          class="mt-4 mx-auto hidden rounded-lg shadow-md"
+        ></video>
+        <button
+          id="captureBtn"
+          class="bg-yellow-500 text-white px-4 py-2 rounded-lg hover:bg-yellow-600 transition mt-2 hidden"
+        >
+          Capture
+        </button>
+        <img
+          id="photoPreview"
+          class="mt-4 mx-auto max-w-xs rounded-lg shadow-md hidden"
+        />
+      </div>
+
+      <!-- Download/Share Section -->
+      <div>
+        <h2 class="text-xl font-semibold text-gray-700 mb-4">
+          Step 3: Download or Share
+        </h2>
+        <div class="flex justify-center space-x-4">
+          <button
+            id="downloadBtn"
+            class="bg-purple-500 text-white px-4 py-2 rounded-lg hover:bg-purple-600 transition disabled:bg-gray-400"
+            disabled
+          >
+            Download
+          </button>
+          <button
+            id="shareBtn"
+            class="bg-indigo-500 text-white px-4 py-2 rounded-lg hover:bg-indigo-600 transition disabled:bg-gray-400"
+            disabled
+          >
+            Share (Mock)
+          </button>
+        </div>
+        <div id="status" class="text-green-600 mt-4"></div>
+        <div id="error"></div>
+      </div>
+    </div>
+
+    <!-- Scripts -->
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js"
+      integrity="sha512-YsR46MmyChktsyMMou+Bs74oCa/CDdwft7rJ5wlnmDzMj1mzqncsfJamEEf99Nk7IB0JpTMo5hS8rxB49FUktQ=="
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    ></script>
+    <script>
+      // Variables
+      let mediaRecorder;
+      let audioChunks = [];
+      let audioBlob;
+      let photoBlob;
+      const maxTime = 20; // 20 seconds
+      let timeLeft = maxTime;
+      let recordingInterval;
+      let mimeType = "audio/mp3"; // Default, will adjust if unsupported
+
+      // DOM Elements
+      const recordBtn = document.getElementById("recordBtn");
+      const stopBtn = document.getElementById("stopBtn");
+      const timer = document.getElementById("timer");
+      const audioPreview = document.getElementById("audioPreview");
+      const webcamBtn = document.getElementById("webcamBtn");
+      const photoUpload = document.getElementById("photoUpload");
+      const webcamPreview = document.getElementById("webcamPreview");
+      const captureBtn = document.getElementById("captureBtn");
+      const photoPreview = document.getElementById("photoPreview");
+      const downloadBtn = document.getElementById("downloadBtn");
+      const shareBtn = document.getElementById("shareBtn");
+      const status = document.getElementById("status");
+      const error = document.getElementById("error");
+
+      // Check supported MIME type for MediaRecorder
+      if (!MediaRecorder.isTypeSupported("audio/mp3")) {
+        mimeType = MediaRecorder.isTypeSupported("audio/webm")
+          ? "audio/webm"
+          : "audio/ogg";
+        error.textContent = `MP3 not supported in this browser. Using ${mimeType} instead.`;
+      }
+
+      // Audio Recording
+      recordBtn.onclick = async () => {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
+        mediaRecorder = new MediaRecorder(stream, { mimeType });
+        audioChunks = [];
+        timeLeft = maxTime;
+
+        mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+        mediaRecorder.onstop = () => {
+          audioBlob = new Blob(audioChunks, { type: mimeType });
+          audioPreview.src = URL.createObjectURL(audioBlob);
+          audioPreview.style.display = "block";
+          downloadAudioBtn.style.display = "block";
+          checkReadyForDownload();
+
+          // Test playback to ensure it's valid
+          audioPreview.oncanplay = () => {
+            status.textContent = "Audio is playable in browser.";
+          };
+          audioPreview.onerror = () => {
+            error.textContent = "Error: Recorded audio may not be playable.";
+          };
+        };
+
+        mediaRecorder.start();
+        recordBtn.disabled = true;
+        stopBtn.disabled = false;
+        updateTimer();
+        recordingInterval = setInterval(() => {
+          timeLeft--;
+          updateTimer();
+          if (timeLeft <= 0) stopRecording();
+        }, 1000);
+      };
+
+      stopBtn.onclick = stopRecording;
+
+      function stopRecording() {
+        mediaRecorder.stop();
+        mediaRecorder.stream.getTracks().forEach((track) => track.stop());
+        clearInterval(recordingInterval);
+        recordBtn.disabled = false;
+        stopBtn.disabled = true;
+      }
+
+      function updateTimer() {
+        const seconds = timeLeft < 10 ? `0${timeLeft}` : timeLeft;
+        timer.textContent = `00:${seconds} / 00:20`;
+      }
+
+      downloadAudioBtn.onclick = () => {
+        const extension =
+          mimeType === "audio/mp3"
+            ? "mp3"
+            : mimeType === "audio/webm"
+            ? "webm"
+            : "ogg";
+        const url = URL.createObjectURL(audioBlob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `audiosnap_audio_${Date.now()}.${extension}`;
+        a.click();
+        URL.revokeObjectURL(url);
+        status.textContent = `Audio downloaded as ${extension}.`;
+      };
+
+      // Photo Handling (Webcam)
+      webcamBtn.onclick = async () => {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+        });
+        webcamPreview.srcObject = stream;
+        webcamPreview.classList.remove("hidden");
+        captureBtn.classList.remove("hidden");
+        webcamBtn.disabled = true;
+      };
+
+      captureBtn.onclick = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = webcamPreview.videoWidth;
+        canvas.height = webcamPreview.videoHeight;
+        canvas.getContext("2d").drawImage(webcamPreview, 0, 0);
+        photoBlob = canvas.toDataURL("image/jpeg");
+        photoPreview.src = photoBlob;
+        photoPreview.classList.remove("hidden");
+        webcamPreview.srcObject.getTracks().forEach((track) => track.stop());
+        webcamPreview.classList.add("hidden");
+        captureBtn.classList.add("hidden");
+        webcamBtn.disabled = false;
+        checkReadyForDownload();
+      };
+
+      // Photo Upload
+      photoUpload.onchange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = () => {
+            photoBlob = reader.result;
+            photoPreview.src = photoBlob;
+            photoPreview.classList.remove("hidden");
+            checkReadyForDownload();
+          };
+          reader.readAsDataURL(file);
+        }
+      };
+
+      // Check if both audio and photo are ready
+      function checkReadyForDownload() {
+        if (audioBlob && photoBlob) {
+          downloadBtn.disabled = false;
+          shareBtn.disabled = false;
+        }
+      }
+
+      // Download with Thumbnail
+      downloadBtn.onclick = () => {
+        const extension =
+          mimeType === "audio/mp3"
+            ? "mp3"
+            : mimeType === "audio/webm"
+            ? "webm"
+            : "ogg";
+        const combinedBlob = new Blob([audioBlob], { type: mimeType }); // Photo not embedded
+        const url = URL.createObjectURL(combinedBlob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `audiosnap_${Date.now()}.${extension}`;
+        a.click();
+        URL.revokeObjectURL(url);
+        status.textContent = `Downloaded as ${extension} (photo not embedded).`;
+      };
+
+      // Mock Share Functionality (Backend Required)
+      shareBtn.onclick = () => {
+        status.textContent =
+          "Sharing not implemented (requires backend). Mock link: audiosnap.app/share/xyz123 (Password: test123, Expires: 24h)";
+      };
+    </script>
+  </body>
+</html>
